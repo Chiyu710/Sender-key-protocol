@@ -12,7 +12,7 @@ class State:
         self.spk_pub = None
         self.prekey_signature =None
         self.opks = []
-        self.sk = []
+        self.sk = {}
         self.dhs = None
         self.dhs_pub = None
         self.dhr = {}
@@ -24,6 +24,8 @@ class State:
         self.kc = {}
         self.nonce = 256
         self.rk = {}
+        self.ek = None
+        self.ekr = {}
 
 
     def prekey_bundle_initial(self):
