@@ -12,7 +12,6 @@ return:new state
 """
 
 
-
 def two_party_channel_init(state_a, state_b):
     id_a = state_a.id
     id_b = state_b.id
@@ -47,7 +46,6 @@ def pre_key_bundle_generation(id, sign_key, sign_key_pub, opk_num=20):
 def two_party_channel_init_key_generate(state, id_b):
     if state.ik_pub is None: return
     ik_pub_b, spk_pub_b, sign_key_pub, perkey_signature, opk_pub_b, opk_index = get_prekey_data(id_b)
-
     if not verify_signature(sign_key_pub, encode_bytes_pub(ik_pub_b) + encode_bytes_pub(spk_pub_b),
                             perkey_signature): raise Exception('Signature Verification Failure')
     ek, ek_pub = generate_key_pair()
@@ -74,7 +72,7 @@ def two_party_channel_init_key_generate(state, id_b):
     concatenated_dh = dh1 + dh2 + dh3
     sk = hkdf.derive(concatenated_dh)
     # use sk to distribute ek_a, spk
-    if state.cks is None:state.cks = os.urandom(32)
+    if state.cks is None: state.cks = os.urandom(32)
     state.dhs = state.cks
     cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
     state.sk[id_b] = sk
@@ -82,7 +80,7 @@ def two_party_channel_init_key_generate(state, id_b):
     # request database delete keys
     # cipher_text = encrpt_AEAD(state.nonce, encode_bytes_pub(state.dhs_pub), info, sk)
     ad = info
-    initial_message = (cipher_text, ad, state.nonce, opk_index)
+    initial_message = (cipher_text, ad, state.nonce, opk_index, state.spk_sign)
 
     return state, initial_message
 
@@ -93,7 +91,8 @@ def handle_initial_message(id_a, state, initial_message):
     ad = initial_message[1]
     nonce = initial_message[2]
     opk_index = initial_message[3]
-
+    sign_pub = initial_message[4]
+    state.sign_key[id_a] = sign_pub
     # Extract the individual keys from the combined bytes ad
     components = ad.split(b" | ")
 
@@ -141,7 +140,7 @@ def handle_initial_message(id_a, state, initial_message):
     state.dhs = state.cks
     info = (state.id + id_a).encode('utf-8')
     cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
-    response_message = (cipher_text, info, state.nonce)
+    response_message = (cipher_text, info, state.nonce,state.spk_sign)
 
     # Do not use the double ratchet initialisation in signal
     # dh_pub_a = decode_bytes_pub_x(plain_text)
@@ -155,7 +154,8 @@ def ratchet_initial_response_receiver(state, id_b, response_msg):
     cipher_text = response_msg[0]
     info = response_msg[1]
     nonce = response_msg[2]
-
+    sign_pub = response_msg[3]
+    state.sign_key[id_b] = sign_pub
     plain_text = decrpt_AEAD(nonce, cipher_text, info, state.sk[id_b])
     state.ckr[id_b] = decode_bytes_pub_x(plain_text)
     state.dhr[id_b] = decode_bytes_pub_x(plain_text)
@@ -164,28 +164,23 @@ def ratchet_initial_response_receiver(state, id_b, response_msg):
 
 
 # for msg paasing
-def two_party_channel_send(state, msg):
-    state.cks, mk = hkdf_ck(state.cks)
-    # dhs might be a version mark
-    ad = state.dhs
-    cipher_text = message_encrypt(state.ime, msg.encode('utf-8'), key=mk, add=ad)
-    # should syn the ime with receiver to handle out-of-order message, but now neglect it
-    m = (cipher_text, ad, state.id, state.ime)
-    state.ime += 1
-    #  signing required
-    return state, m
+def two_party_key_encrypt(state_a, id_b, msg):
+    key = state_a.sk[id_b]
+    info = (state_a.id+id_b).encode('utf8')
+    cipher_text = encrpt_AEAD(state_a.nonce, msg, info, key)
+    m = cipher_text,state_a.nonce
+    return m
 
 
-def two_party_channel_receiver(state, m):
-    cipher_text = m[0]
-    id_sender = m[2]
-    ime = m[3]
-    # ime syn --now skip
+def two_party_key_decrypt(state_b, id_a, m):
+    ct = m[0]
+    nonce = m[1]
+    key = state_b.sk[id_a]
+    info = (+id_a+state_b.id).encode('utf8')
+    plain_text = decrpt_AEAD(nonce, ct, info, key)
+    return plain_text
 
-    state.ckr[id_sender], mk = hkdf_ck(state.ckr[id_sender])
-    plain_text = decrpt_AEAD(ime, cipher_text, state.dhr[id_sender], mk)
 
-    return state, plain_text
 
 
 """
