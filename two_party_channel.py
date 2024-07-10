@@ -10,6 +10,9 @@ args: state of both
 
 return:new state
 """
+
+
+
 def two_party_channel_init(state_a, state_b):
     id_a = state_a.id
     id_b = state_b.id
@@ -33,8 +36,8 @@ def pre_key_bundle_generation(id, sign_key, sign_key_pub, opk_num=20):
     for i in range(opk_num):
         opk, opk_pub = generate_key_pair()
         opks.append((opk, opk_pub))
-    # store the prekey bundle
 
+    # store the prekey bundle
     pre_key_store(id, ik_pub, spk_pub, sign_key_pub, prekey_signature, opks)
     print(id, 'prekey_bundle generate successfully')
     return ik, ik_pub, spk, spk_pub, prekey_signature, opks
@@ -71,9 +74,9 @@ def two_party_channel_init_key_generate(state, id_b):
     concatenated_dh = dh1 + dh2 + dh3
     sk = hkdf.derive(concatenated_dh)
     # use sk to distribute ek_a, spk
-    state.eks = os.urandom(32)
-    state.dhs = state.eks
-    cipher_text = encrpt_AEAD(state.nonce, state.eks, info, sk)
+    if state.cks is None:state.cks = os.urandom(32)
+    state.dhs = state.cks
+    cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
     state.sk[id_b] = sk
     # state = ratchet_initial_sender(state, id_b, sk, spk_pub_b)
     # request database delete keys
@@ -82,6 +85,7 @@ def two_party_channel_init_key_generate(state, id_b):
     initial_message = (cipher_text, ad, state.nonce, opk_index)
 
     return state, initial_message
+
 
 def handle_initial_message(id_a, state, initial_message):
     # extract info from initial message
@@ -127,16 +131,16 @@ def handle_initial_message(id_a, state, initial_message):
     concatenated_dh = dh1 + dh2 + dh3
     sk = hkdf.derive(concatenated_dh)
     plain_text = decrpt_AEAD(nonce, cipher_text, ad, sk)
-    state.ekr[id_a] = plain_text
+    state.ckr[id_a] = plain_text
     state.dhr[id_a] = plain_text
     # If the decryption is successful, store the sk
     state.sk[id_a] = sk
 
     #  Generate own ck_b, share it with the sender
-    state.eks = os.urandom(32)
-    state.dhs = state.eks
+    if state.cks is None: state.cks = os.urandom(32)
+    state.dhs = state.cks
     info = (state.id + id_a).encode('utf-8')
-    cipher_text = encrpt_AEAD(state.nonce, state.eks, info, sk)
+    cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
     response_message = (cipher_text, info, state.nonce)
 
     # Do not use the double ratchet initialisation in signal
@@ -146,28 +150,31 @@ def handle_initial_message(id_a, state, initial_message):
 
     return state, response_message
 
-def ratchet_initial_response_receiver(state,id_b,response_msg):
+
+def ratchet_initial_response_receiver(state, id_b, response_msg):
     cipher_text = response_msg[0]
     info = response_msg[1]
     nonce = response_msg[2]
 
-    plain_text = decrpt_AEAD(nonce,cipher_text,info,state.sk[id_b])
-    state.ekr[id_b] = decode_bytes_pub_x(plain_text)
+    plain_text = decrpt_AEAD(nonce, cipher_text, info, state.sk[id_b])
+    state.ckr[id_b] = decode_bytes_pub_x(plain_text)
     state.dhr[id_b] = decode_bytes_pub_x(plain_text)
 
     return state
 
 
+# for msg paasing
 def two_party_channel_send(state, msg):
-    state.eks, mk = hkdf_ck(state.eks)
+    state.cks, mk = hkdf_ck(state.cks)
     # dhs might be a version mark
     ad = state.dhs
-    cipher_text = message_encrypt(state.ime, msg.encode('utf-8'), key=mk, add=ad )
+    cipher_text = message_encrypt(state.ime, msg.encode('utf-8'), key=mk, add=ad)
     # should syn the ime with receiver to handle out-of-order message, but now neglect it
     m = (cipher_text, ad, state.id, state.ime)
     state.ime += 1
     #  signing required
-    return state,m
+    return state, m
+
 
 def two_party_channel_receiver(state, m):
     cipher_text = m[0]
@@ -175,10 +182,11 @@ def two_party_channel_receiver(state, m):
     ime = m[3]
     # ime syn --now skip
 
-    state.ekr[id_sender], mk = hkdf_ck(state.ekr[id_sender])
-    plain_text = decrpt_AEAD(ime,cipher_text,state.dhr[id_sender],mk)
+    state.ckr[id_sender], mk = hkdf_ck(state.ckr[id_sender])
+    plain_text = decrpt_AEAD(ime, cipher_text, state.dhr[id_sender], mk)
 
     return state, plain_text
+
 
 """
 
@@ -245,9 +253,6 @@ def dh_update_sender(state, id):
     return state
 
 """
-
-
-
 
 
 # extra function

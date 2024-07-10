@@ -32,8 +32,6 @@ def pre_key_store(id, ik_pub, spk_pub, spk_sign, signature, opks):
         print(f"An error occurred: {e}")
 
 
-
-
 def get_prekey_data(id):
     connection = pymysql.connect(host='localhost',
                                  user='root',
@@ -98,6 +96,7 @@ def store_state(state):
         connection.rollback()
         print(f"An error occurred: {e}")
 
+
 def retrieve_state(id):
     connection = pymysql.connect(host='localhost',
                                  user='root',
@@ -118,7 +117,6 @@ def retrieve_state(id):
 
             (ik, ik_pub, spk, spk_pub, prekey_signature) = user_data
 
-
             # Convert keys from byte type to key type
 
             ik = x25519.X25519PrivateKey.from_private_bytes(ik)
@@ -132,3 +130,26 @@ def retrieve_state(id):
     except Exception as e:
         print(f"An error occurred: {e}")
         return None
+
+
+def search_id(id):
+    connection = pymysql.connect(host='localhost',
+                                 user='root',
+                                 port=3307,
+                                 password='root',
+                                 db='sender_key')
+    try:
+        with connection.cursor() as cursor:
+            # Insert data into user table
+            sql_user = """
+                SELECT  id FROM prekey WHERE id  = %s
+                """
+            cursor.execute(sql_user, id)
+            user_id = cursor.fetchone()
+        if user_id != None:
+            return True
+        else:
+            return False
+    except Exception as e:
+        connection.rollback()
+        print(f"An error occurred: {e}")
