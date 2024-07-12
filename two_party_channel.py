@@ -72,13 +72,12 @@ def two_party_channel_init_key_generate(state, id_b):
     concatenated_dh = dh1 + dh2 + dh3
     sk = hkdf.derive(concatenated_dh)
     # use sk to distribute ek_a, spk
-    if state.cks is None: state.cks = os.urandom(32)
+    if state.cks is None:
+        state.cks = os.urandom(32)
+        state.ick = 1
     state.dhs = state.cks
     cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
     state.sk[id_b] = sk
-    # state = ratchet_initial_sender(state, id_b, sk, spk_pub_b)
-    # request database delete keys
-    # cipher_text = encrpt_AEAD(state.nonce, encode_bytes_pub(state.dhs_pub), info, sk)
     ad = info
     initial_message = (cipher_text, ad, state.nonce, opk_index, state.spk_sign)
 
@@ -131,21 +130,22 @@ def handle_initial_message(id_a, state, initial_message):
     sk = hkdf.derive(concatenated_dh)
     plain_text = decrpt_AEAD(nonce, cipher_text, ad, sk)
     state.ckr[id_a] = plain_text
-    state.dhr[id_a] = plain_text
+
     # If the decryption is successful, store the sk
     state.sk[id_a] = sk
+    # first time to refresh key(kcr) and get ck(ick_r) and msg
+    state.kcr[id_a] = 1
+    state.ickr[id_a] = 1
+    state.imer[id_a] = 0
 
     #  Generate own ck_b, share it with the sender
-    if state.cks is None: state.cks = os.urandom(32)
+    if state.cks is None:
+        state.cks = os.urandom(32)
+        state.ick = 1
     state.dhs = state.cks
     info = (state.id + id_a).encode('utf-8')
     cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
-    response_message = (cipher_text, info, state.nonce,state.spk_sign)
-
-    # Do not use the double ratchet initialisation in signal
-    # dh_pub_a = decode_bytes_pub_x(plain_text)
-    # # delete opk_p
-    # state = ratchet_initial_receiver(state, id_a, sk, dh_pub_a)
+    response_message = (cipher_text, info, state.nonce, state.spk_sign)
 
     return state, response_message
 
@@ -157,18 +157,20 @@ def ratchet_initial_response_receiver(state, id_b, response_msg):
     sign_pub = response_msg[3]
     state.sign_key[id_b] = sign_pub
     plain_text = decrpt_AEAD(nonce, cipher_text, info, state.sk[id_b])
+    # first time get ek_A
     state.ckr[id_b] = decode_bytes_pub_x(plain_text)
-    state.dhr[id_b] = decode_bytes_pub_x(plain_text)
-
+    state.ickr[id_b] = 1
+    state.kcr[id_b] = 1
+    state.imer[id_b] = 0
     return state
 
 
-# for msg paasing
+# for msg transmission
 def two_party_key_encrypt(state_a, id_b, msg):
     key = state_a.sk[id_b]
-    info = (state_a.id+id_b).encode('utf8')
+    info = (state_a.id + id_b).encode('utf8')
     cipher_text = encrpt_AEAD(state_a.nonce, msg, info, key)
-    m = cipher_text,state_a.nonce
+    m = cipher_text, state_a.nonce
     return m
 
 
@@ -176,11 +178,9 @@ def two_party_key_decrypt(state_b, id_a, m):
     ct = m[0]
     nonce = m[1]
     key = state_b.sk[id_a]
-    info = (+id_a+state_b.id).encode('utf8')
+    info = (id_a + state_b.id).encode('utf8')
     plain_text = decrpt_AEAD(nonce, ct, info, key)
     return plain_text
-
-
 
 
 """

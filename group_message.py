@@ -64,3 +64,8 @@ class Group:
             user.ep += 1
             user.cks_update()
             # should inform other members to update ckr
+
+    def group_key_update(self,ms,id_sender):
+        for id in ms.keys():
+            m = ms[id]
+            self.member_dict[id].ck_receive(m,id_sender)
