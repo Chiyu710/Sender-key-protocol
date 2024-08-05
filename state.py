@@ -1,3 +1,4 @@
+import group_message
 from two_party_channel import *
 
 
@@ -25,6 +26,8 @@ class State:
         self.kcr = {}
         self.mk = {}
         self.nonce = 0
+        # root key list
+        self.rk = []
 
     def prekey_bundle_initial(self):
         (self.ik, self.ik_pub,
@@ -46,6 +49,9 @@ class State:
         self.ick += 1
         return m, sign_m
 
+
+    # input: cipher text m and signature sig
+    # output: (state code, plaintext)
     def message_decrypt(self, m, sig):
         # m parse and verify
         cipher_text = m[0]
@@ -57,29 +63,40 @@ class State:
         if not verify_signature(self.sign_key[sender_id], cipher_text, sig):
             raise Exception('Signature Verification Failure')
 
-        # if e=ep, locate mk
-        if sender_ep == self.ep:
-            # go forward to get ick syn and generate mk
-            if sender_ick >= self.ickr[sender_id]:
-                step = sender_ick - self.ickr[sender_id]
-                for i in range(step):
-                    self.ckr[sender_id], mk = hkdf_ck(self.ckr[sender_id])
-                    self.imer[sender_id] += 1;
-                    # save mk in dict[sender][ck_index][mk_index]
-                    self.mk[sender_id][self.kc][self.ime] = mk
-                # when send_ick == self_ick, get mk for this message
-                self.ckr[sender_id], mk = hkdf_ck(self.ckr[sender_id])
-        elif sender_ep < self.ep:
-            mk = self.mk[sender_id][sender_kc][sender_ime]
-            # if key used, delete it
-            del self.mk[sender_id][sender_kc][sender_ime]
-        else:
+        # Epoch check
+        if sender_ep> self.ep:
             print('The message from future, can not handle the msg')
-            return None
+            return 0, None
 
+        # root key check
+        if sender_kc > self.kcr[sender_id]:
+            # return state code 2, inform system to update rk and try to decrypt again
+            return 2, None
+
+        # get the same receive chain, then go forward to get ick syn and generate mk
+        if sender_ick > self.ickr[sender_id]:
+            while sender_ick > self.ickr[sender_id]:
+                # mk dictionary capacity check
+                if sender_id not in self.mk:
+                    self.mk[sender_id] = []
+                # extend kc
+                while len(self.mk[sender_id]) <= sender_kc:
+                    self.mk[sender_id].append([])
+                # extend ime
+                while len(self.mk[sender_id][sender_kc]) <= sender_ime:
+                    self.mk[sender_id][sender_kc].append(None)
+                self.mk_generate_with_save(sender_id)
+
+            # when send_ick == self_ick, get mk for this message
+            mk = self.mk_generate(sender_id)
+        elif sender_ick == self.ickr[sender_id]:
+            mk = self.mk_generate(sender_id)
+        else:
+            mk = self.mk[sender_id][sender_kc][sender_ime]
+            del self.mk[sender_id][sender_kc][sender_ime]
         plain_text = decrpt_AEAD(sender_ime, cipher_text, sender_id.encode('utf-8'), mk)
 
-        return plain_text
+        return 1 , plain_text
 
     def cks_update(self):
         new_cks = os.urandom(32)
@@ -101,3 +118,16 @@ class State:
         self.ickr[id_sender] = 1
         self.kcr[id_sender] += 1
         self.imer[id_sender] = 0
+
+    def mk_generate(self, sender_id):
+        self.ckr[sender_id], mk = hkdf_ck(self.ckr[sender_id])
+        self.imer[sender_id] += 1
+        self.ickr[sender_id] += 1
+        return mk
+
+    def mk_generate_with_save(self, sender_id):
+        self.ckr[sender_id], mk = hkdf_ck(self.ckr[sender_id])
+        self.mk[sender_id][self.kc][self.imer[sender_id]] = mk
+        self.imer[sender_id] += 1
+        self.ickr[sender_id] += 1
+        return mk

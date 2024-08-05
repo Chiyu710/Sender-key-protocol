@@ -1,29 +1,24 @@
 # test
+import string
+
+import random
 from group_message import *
 from state import State
 
-group = Group(['A','B','C'])
+group = Group(['A', 'B', 'C'])
 group.group_creation()
 stateA = group.member_dict['A']
 stateB = group.member_dict['B']
-stateC = group.member_dict['C']
-
-
-print(stateA.__dict__)
-print(stateB.__dict__)
-print(stateC.__dict__)
-
-ms = stateA.cks_update()
-m, sig = stateA.message_encrypt('test message')
-group.group_key_update(ms,'A')
-stateB = group.member_dict['B']
-stateC = group.member_dict['C']
+# stateC = group.member_dict['C']
 
 print(stateA.__dict__)
 print(stateB.__dict__)
-print(stateC.__dict__)
 
-t1 = stateB.message_decrypt(m,sig)
-t2 = stateC.message_decrypt(m,sig)
+for i in range(10):
+    characters = string.ascii_letters + string.digits + string.punctuation
+    random_string = ''.join(random.choice(characters) for _ in range(100))
 
-print(t1, t2)
+    group.message_send('A', random_string)
+    group.message_send('B', random_string)
+
+

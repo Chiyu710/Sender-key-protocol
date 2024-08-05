@@ -65,7 +65,20 @@ class Group:
             user.cks_update()
             # should inform other members to update ckr
 
-    def group_key_update(self,ms,id_sender):
+    def group_key_update(self, ms, id_sender):
         for id in ms.keys():
             m = ms[id]
-            self.member_dict[id].ck_receive(m,id_sender)
+            self.member_dict[id].ck_receive(m, id_sender)
+
+    def message_send(self, sender_id, m):
+        state_sender = self.member_dict[sender_id]
+        c, sig = state_sender.message_encrypt(m)
+        # may be need member check?
+        for receiver in state_sender.group:
+            self.message_receive(receiver, c, sig)
+        return "acc"
+
+    def message_receive(self, receiver_id, c, sig):
+        state_receiver = self.member_dict[receiver_id]
+        code, m = state_receiver.message_decrypt(c, sig)
+        print(receiver_id, code, m)

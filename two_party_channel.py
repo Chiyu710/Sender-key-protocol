@@ -74,6 +74,7 @@ def two_party_channel_init_key_generate(state, id_b):
     # use sk to distribute ek_a, spk
     if state.cks is None:
         state.cks = os.urandom(32)
+        state.rk.append(state.cks)
         state.ick = 1
     state.dhs = state.cks
     cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
@@ -141,6 +142,7 @@ def handle_initial_message(id_a, state, initial_message):
     #  Generate own ck_b, share it with the sender
     if state.cks is None:
         state.cks = os.urandom(32)
+        state.rk.append(state.cks)
         state.ick = 1
     state.dhs = state.cks
     info = (state.id + id_a).encode('utf-8')
@@ -158,7 +160,7 @@ def ratchet_initial_response_receiver(state, id_b, response_msg):
     state.sign_key[id_b] = sign_pub
     plain_text = decrpt_AEAD(nonce, cipher_text, info, state.sk[id_b])
     # first time get ek_A
-    state.ckr[id_b] = decode_bytes_pub_x(plain_text)
+    state.ckr[id_b] = plain_text
     state.ickr[id_b] = 1
     state.kcr[id_b] = 1
     state.imer[id_b] = 0
