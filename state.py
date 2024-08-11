@@ -1,3 +1,4 @@
+import cryptographic_material
 import group_message
 from two_party_channel import *
 
@@ -38,21 +39,21 @@ class State:
     def retrieve_keys(self):
         self.ik, self.ik_pub, self.spk, self.spk_pub, self.prekey_signature = retrieve_state(self.id)
 
-    def message_encrypt(self, msg):
+    def message_encrypt(self, msg, enc_mode, sign_mode):
         if self.cks is None: return
         self.cks, mk = hkdf_ck(self.cks)
         ad = self.id.encode('utf-8')
-        cipher_text = message_encrypt(self.ime, msg.encode('utf-8'), key=mk, add=ad)
+        cipher_text = cryptographic_material.message_encrypt(nonce=self.ime, data = msg.encode('utf-8'), enc_mode=enc_mode, key=mk, add=ad)
         m = (cipher_text, self.id, self.ime, self.ick, self.ep, self.kc)
+        #  sign_mode=sign_mode,
         sign_m = sign_data(self.ssk_sign, m[0])
         self.ime += 1
         self.ick += 1
         return m, sign_m
 
-
     # input: cipher text m and signature sig
     # output: (state code, plaintext)
-    def message_decrypt(self, m, sig):
+    def message_decrypt(self, m, sig, dec_mode, sign_mode):
         # m parse and verify
         cipher_text = m[0]
         sender_id = m[1]
@@ -60,11 +61,12 @@ class State:
         sender_ick = m[3]
         sender_ep = m[4]
         sender_kc = m[5]
+        # sign_mode
         if not verify_signature(self.sign_key[sender_id], cipher_text, sig):
             raise Exception('Signature Verification Failure')
 
         # Epoch check
-        if sender_ep> self.ep:
+        if sender_ep > self.ep:
             print('The message from future, can not handle the msg')
             return 0, None
 
@@ -94,9 +96,8 @@ class State:
         else:
             mk = self.mk[sender_id][sender_kc][sender_ime]
             del self.mk[sender_id][sender_kc][sender_ime]
-        plain_text = decrpt_AEAD(sender_ime, cipher_text, sender_id.encode('utf-8'), mk)
-
-        return 1 , plain_text
+        plain_text = cryptographic_material.message_decrypt(sender_ime, cipher_text, sender_id.encode('utf-8'), mk,dec_mode)
+        return 1, plain_text
 
     def cks_update(self):
         new_cks = os.urandom(32)
@@ -113,7 +114,7 @@ class State:
         return ms
 
     def ck_receive(self, m, id_sender):
-        new_key = two_party_key_decrypt(self,id_sender,m)
+        new_key = two_party_key_decrypt(self, id_sender, m)
         self.ckr[id_sender] = new_key
         self.ickr[id_sender] = 1
         self.kcr[id_sender] += 1

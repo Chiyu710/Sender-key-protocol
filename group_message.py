@@ -70,15 +70,16 @@ class Group:
             m = ms[id]
             self.member_dict[id].ck_receive(m, id_sender)
 
-    def message_send(self, sender_id, m):
+    def message_send(self, sender_id, m, enc_mode='AES-GCM', sign_mode='ed25519'):
         state_sender = self.member_dict[sender_id]
-        c, sig = state_sender.message_encrypt(m)
+        c, sig = state_sender.message_encrypt(m, enc_mode, sign_mode)
         # may be need member check?
         for receiver in state_sender.group:
-            self.message_receive(receiver, c, sig)
+            self.message_receive(receiver, c, sig, dec_mode=enc_mode, sign_mode=sign_mode)
         return "acc"
 
-    def message_receive(self, receiver_id, c, sig):
+    def message_receive(self, receiver_id, c, sig, dec_mode, sign_mode):
         state_receiver = self.member_dict[receiver_id]
-        code, m = state_receiver.message_decrypt(c, sig)
+        code, m = state_receiver.message_decrypt(c, sig, dec_mode, sign_mode)
+
         print(receiver_id, code, m)
