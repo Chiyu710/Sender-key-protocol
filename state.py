@@ -7,7 +7,7 @@ class State:
     def __init__(self, id):
         self.id = id  # it should be a random unique string
         self.group = []
-        self.ssk_sign, self.spk_sign = generate_sign_key_pair()
+        self.ssk_sign, self.spk_sign = generate_sign_key_pair('ed25519')
         self.sign_key = {}
         self.ik = None
         self.ik_pub = None
@@ -23,7 +23,7 @@ class State:
         self.imer = {}
         self.ick = 0
         self.ickr = {}
-        self.kc = 0;
+        self.kc = 0
         self.kcr = {}
         self.mk = {}
         self.nonce = 0
@@ -43,10 +43,11 @@ class State:
         if self.cks is None: return
         self.cks, mk = hkdf_ck(self.cks)
         ad = self.id.encode('utf-8')
-        cipher_text = cryptographic_material.message_encrypt(nonce=self.ime, data = msg.encode('utf-8'), enc_mode=enc_mode, key=mk, add=ad)
+        cipher_text = cryptographic_material.AEAD_encrypt(nonce=self.ime, data=msg.encode('utf-8'), enc_mode=enc_mode,
+                                                          key=mk, add=ad)
         m = (cipher_text, self.id, self.ime, self.ick, self.ep, self.kc)
         #  sign_mode=sign_mode,
-        sign_m = sign_data(self.ssk_sign, m[0])
+        sign_m = sign_data(self.ssk_sign, m[0], sign_mode)
         self.ime += 1
         self.ick += 1
         return m, sign_m
@@ -62,7 +63,7 @@ class State:
         sender_ep = m[4]
         sender_kc = m[5]
         # sign_mode
-        if not verify_signature(self.sign_key[sender_id], cipher_text, sig):
+        if not verify_signature(self.sign_key[sender_id], cipher_text, sig, sign_mode):
             raise Exception('Signature Verification Failure')
 
         # Epoch check
@@ -96,7 +97,8 @@ class State:
         else:
             mk = self.mk[sender_id][sender_kc][sender_ime]
             del self.mk[sender_id][sender_kc][sender_ime]
-        plain_text = cryptographic_material.message_decrypt(sender_ime, cipher_text, sender_id.encode('utf-8'), mk,dec_mode)
+        plain_text = cryptographic_material.AEAD_decrypt(sender_ime, cipher_text, sender_id.encode('utf-8'), mk,
+                                                         dec_mode)
         return 1, plain_text
 
     def cks_update(self):
@@ -109,12 +111,12 @@ class State:
         self.nonce += 1
         ms = {}
         for id in self.group:
-            m = two_party_key_encrypt(self, id, new_cks)
+            m = two_party_key_encrypt(self, id, new_cks, enc_mode='AES-GCM')
             ms[id] = m
         return ms
 
     def ck_receive(self, m, id_sender):
-        new_key = two_party_key_decrypt(self, id_sender, m)
+        new_key = two_party_key_decrypt(self, id_sender, m, dec_mode='AES-GCM')
         self.ckr[id_sender] = new_key
         self.ickr[id_sender] = 1
         self.kcr[id_sender] += 1

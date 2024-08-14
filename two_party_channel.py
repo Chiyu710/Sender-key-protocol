@@ -12,12 +12,12 @@ return:new state
 """
 
 
-def two_party_channel_init(state_a, state_b):
+def two_party_channel_init(state_a, state_b, enc_mode, sign_mode):
     id_a = state_a.id
     id_b = state_b.id
-    state_a, initial_msg = two_party_channel_init_key_generate(state_a, id_b)
-    state_b, response_msg = handle_initial_message(id_a, state_b, initial_msg)
-    state_a = ratchet_initial_response_receiver(state_a, id_b, response_msg)
+    state_a, initial_msg = two_party_channel_init_key_generate(state_a, id_b, enc_mode, sign_mode)
+    state_b, response_msg = handle_initial_message(id_a, state_b, initial_msg, enc_mode, sign_mode)
+    state_a = ratchet_initial_response_receiver(state_a, id_b, response_msg, enc_mode)
     return state_a, state_b
 
 
@@ -29,7 +29,7 @@ def pre_key_bundle_generation(id, sign_key, sign_key_pub, opk_num=20):
     spk_pub_bytes = encode_bytes_pub(spk_pub)
     data_to_sign = ik_pub_bytes + spk_pub_bytes
 
-    prekey_signature = sign_data(sign_key, data_to_sign)
+    prekey_signature = sign_data(sign_key, data_to_sign, 'ed25519')
 
     opks = []
     for i in range(opk_num):
@@ -43,11 +43,11 @@ def pre_key_bundle_generation(id, sign_key, sign_key_pub, opk_num=20):
 
 
 # Use prekey bundle to build channel by X3DH
-def two_party_channel_init_key_generate(state, id_b):
+def two_party_channel_init_key_generate(state, id_b, enc_mode, sign_mode):
     if state.ik_pub is None: return
     ik_pub_b, spk_pub_b, sign_key_pub, perkey_signature, opk_pub_b, opk_index = get_prekey_data(id_b)
     if not verify_signature(sign_key_pub, encode_bytes_pub(ik_pub_b) + encode_bytes_pub(spk_pub_b),
-                            perkey_signature): raise Exception('Signature Verification Failure')
+                            perkey_signature, sign_mode): raise Exception('Signature Verification Failure')
     ek, ek_pub = generate_key_pair()
     dh1 = dh(state.ik, spk_pub_b)
     dh2 = dh(ek, ik_pub_b)
@@ -77,7 +77,7 @@ def two_party_channel_init_key_generate(state, id_b):
         state.rk.append(state.cks)
         state.ick = 1
     state.dhs = state.cks
-    cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
+    cipher_text = AEAD_encrypt(state.nonce, state.cks, info, sk, enc_mode)
     state.sk[id_b] = sk
     ad = info
     initial_message = (cipher_text, ad, state.nonce, opk_index, state.spk_sign)
@@ -85,7 +85,7 @@ def two_party_channel_init_key_generate(state, id_b):
     return state, initial_message
 
 
-def handle_initial_message(id_a, state, initial_message):
+def handle_initial_message(id_a, state, initial_message, enc_mode, sign_mode):
     # extract info from initial message
     cipher_text = initial_message[0]
     ad = initial_message[1]
@@ -129,7 +129,7 @@ def handle_initial_message(id_a, state, initial_message):
     # concatenated_dh = dh1 + dh2 + dh3 + dh4
     concatenated_dh = dh1 + dh2 + dh3
     sk = hkdf.derive(concatenated_dh)
-    plain_text = decrpt_AEAD(nonce, cipher_text, ad, sk)
+    plain_text = AEAD_decrypt(state.nonce, cipher_text, info, sk, enc_mode)
     state.ckr[id_a] = plain_text
 
     # If the decryption is successful, store the sk
@@ -146,19 +146,19 @@ def handle_initial_message(id_a, state, initial_message):
         state.ick = 1
     state.dhs = state.cks
     info = (state.id + id_a).encode('utf-8')
-    cipher_text = encrpt_AEAD(state.nonce, state.cks, info, sk)
+    cipher_text = AEAD_encrypt(state.nonce, state.cks, info, sk, enc_mode)
     response_message = (cipher_text, info, state.nonce, state.spk_sign)
 
     return state, response_message
 
 
-def ratchet_initial_response_receiver(state, id_b, response_msg):
+def ratchet_initial_response_receiver(state, id_b, response_msg, enc_mode):
     cipher_text = response_msg[0]
     info = response_msg[1]
     nonce = response_msg[2]
     sign_pub = response_msg[3]
     state.sign_key[id_b] = sign_pub
-    plain_text = decrpt_AEAD(nonce, cipher_text, info, state.sk[id_b])
+    plain_text = AEAD_decrypt(nonce, cipher_text, info, state.sk[id_b], enc_mode)
     # first time get ek_A
     state.ckr[id_b] = plain_text
     state.ickr[id_b] = 1
@@ -168,20 +168,20 @@ def ratchet_initial_response_receiver(state, id_b, response_msg):
 
 
 # for msg transmission
-def two_party_key_encrypt(state_a, id_b, msg):
+def two_party_key_encrypt(state_a, id_b, msg, enc_mode):
     key = state_a.sk[id_b]
     info = (state_a.id + id_b).encode('utf8')
-    cipher_text = encrpt_AEAD(state_a.nonce, msg, info, key)
+    cipher_text = AEAD_encrypt(state_a.nonce, msg, info, key, enc_mode)
     m = cipher_text, state_a.nonce
     return m
 
 
-def two_party_key_decrypt(state_b, id_a, m):
+def two_party_key_decrypt(state_b, id_a, m, dec_mode):
     ct = m[0]
     nonce = m[1]
     key = state_b.sk[id_a]
     info = (id_a + state_b.id).encode('utf8')
-    plain_text = decrpt_AEAD(nonce, ct, info, key)
+    plain_text = AEAD_decrypt(nonce, ct, info, key, dec_mode)
     return plain_text
 
 

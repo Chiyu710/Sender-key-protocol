@@ -19,13 +19,13 @@ class Group:
                 state.prekey_bundle_initial()
             self.member_dict[user_id] = state
 
-    def group_creation(self):
+    def group_creation(self, enc_mode, sign_mode):
         pairs = combinations(self.member, 2)
         # Perform double ratchet initialisation on each other
         for a, b in pairs:
             state_a = self.member_dict[a]
             state_b = self.member_dict[b]
-            state_a, state_b = two_party_channel_init(state_a, state_b)
+            state_a, state_b = two_party_channel_init(state_a, state_b, enc_mode, sign_mode)
             self.member_dict[a] = state_a
             self.member_dict[b] = state_b
         for user in self.member_dict.values():
@@ -73,7 +73,6 @@ class Group:
     def message_send(self, sender_id, m, enc_mode='AES-GCM', sign_mode='ed25519'):
         state_sender = self.member_dict[sender_id]
         c, sig = state_sender.message_encrypt(m, enc_mode, sign_mode)
-        # may be need member check?
         for receiver in state_sender.group:
             self.message_receive(receiver, c, sig, dec_mode=enc_mode, sign_mode=sign_mode)
         return "acc"
@@ -81,5 +80,5 @@ class Group:
     def message_receive(self, receiver_id, c, sig, dec_mode, sign_mode):
         state_receiver = self.member_dict[receiver_id]
         code, m = state_receiver.message_decrypt(c, sig, dec_mode, sign_mode)
-
-        print(receiver_id, code, m)
+        if code != 1:
+            print("decryption failed")

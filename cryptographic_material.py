@@ -18,18 +18,44 @@ def generate_key_pair():
     return private_key, public_key
 
 
-def generate_sign_key_pair():
+def generate_sign_key_pair(mode):
+    if mode == "ed25519":
+        return generate_sign_key_pair_ed25519()
+    elif mode == "sphincs":
+        return generate_sign_key_pair_sphincs()
+    return None
+
+
+def sign_data(key, data, mode):
+    if mode == "ed25519":
+        return sign_data_ed25519(key, data)
+    elif mode == "sphincs":
+        return sign_sphincs(key, data)
+    return None
+
+
+def verify_signature(public_key, data, signature, mode):
+    if mode == "ed25519":
+        return verify_signature_ed25519(public_key, data, signature)
+    elif mode == "sphincs":
+        return verify_sphincs(public_key, signature, data)
+    else:
+        # default setting
+        return verify_signature_ed25519(public_key, data, signature)
+
+
+def generate_sign_key_pair_ed25519():
     private_key = Ed25519PrivateKey.generate()
     public_key = private_key.public_key()
     return private_key, public_key
 
 
-def sign_data(key, data):
+def sign_data_ed25519(key, data):
     signature = key.sign(data)
     return signature
 
 
-def verify_signature(public_key, data, signature):
+def verify_signature_ed25519(public_key, data, signature):
     try:
         public_key.verify(signature, data)
         return True
@@ -37,17 +63,23 @@ def verify_signature(public_key, data, signature):
         return False
 
 
+def generate_sign_key_pair_sphincs():
+    sphincs = Sphincs()
+    private_key, public_key = sphincs.generate_key_pair()
+    return private_key, public_key
+
+
 def sign_sphincs(key, data):
     sphincs = Sphincs()
-    sphincs.set_winternitz(4)
-    sphincs.set_hypertree_height(4)
+    sphincs.set_winternitz(16)
+    sphincs.set_hypertree_height(60)
     signature = sphincs.sign(data, key)
-    print("Signature bytes-size: ", len(signature))
     return signature
 
 
 def verify_sphincs(key, sig, m):
     try:
+        sphincs = Sphincs()
         sphincs.verify(m, sig, key)
         return True
     except InvalidSignature:
@@ -60,35 +92,55 @@ def dh(key1, key2):
     return shared_key
 
 
-def message_encrypt(nonce, data, add, key, enc_mode):
+def AEAD_encrypt(nonce, data, add, key, enc_mode):
     if enc_mode == 'AES-CCM':
         cipher_text = encrpt_AEAD_aes_ccm(nonce, data, add, key)
     elif enc_mode == 'AES-GCM-IV':
         cipher_text = encrpt_AEAD_aes_gcm_siv(nonce, data, add, key)
     else:
-        cipher_text = encrpt_AEAD(nonce, data, add, key)
+        cipher_text = encrpt_AEAD_aes_gcm(nonce, data, add, key)
     return cipher_text
 
 
-def message_decrypt(nonce, cipher_text, add, key, dec_mode):
+def AEAD_decrypt(nonce, cipher_text, add, key, dec_mode):
     if dec_mode == 'AES-CCM':
         plain_text = decrpt_AEAD_aes_ccm(nonce, cipher_text, add, key)
     elif dec_mode == 'AES-GCM-IV':
         plain_text = decrpt_AEAD_aes_gcm_siv(nonce, cipher_text, add, key)
     else:
-        plain_text = decrpt_AEAD(nonce, cipher_text, add, key)
+        plain_text = decrpt_AEAD_aes_gcm(nonce, cipher_text, add, key)
     return plain_text
 
 
+# def message_encrypt(nonce, data, add, key, enc_mode):
+#     if enc_mode == 'AES-CCM':
+#         cipher_text = encrpt_AEAD_aes_ccm(nonce, data, add, key)
+#     elif enc_mode == 'AES-GCM-IV':
+#         cipher_text = encrpt_AEAD_aes_gcm_siv(nonce, data, add, key)
+#     else:
+#         cipher_text = encrpt_AEAD_aes_gcm(nonce, data, add, key)
+#     return cipher_text
+#
+#
+# def message_decrypt(nonce, cipher_text, add, key, dec_mode):
+#     if dec_mode == 'AES-CCM':
+#         plain_text = decrpt_AEAD_aes_ccm(nonce, cipher_text, add, key)
+#     elif dec_mode == 'AES-GCM-IV':
+#         plain_text = decrpt_AEAD_aes_gcm_siv(nonce, cipher_text, add, key)
+#     else:
+#         plain_text = decrpt_AEAD_aes_gcm(nonce, cipher_text, add, key)
+#     return plain_text
+
+
 # use aesgcm, aes
-def encrpt_AEAD(nonce, data, add, key):
+def encrpt_AEAD_aes_gcm(nonce, data, add, key):
     nonce = nonce.to_bytes(12)
     aesgcm = AESGCM(key)
     cipher_text = aesgcm.encrypt(nonce, data, add)
     return cipher_text
 
 
-def decrpt_AEAD(nonce, cipher_text, add, key):
+def decrpt_AEAD_aes_gcm(nonce, cipher_text, add, key):
     nonce = nonce.to_bytes(12)
     aesgcm = AESGCM(key)
     plain_text = aesgcm.decrypt(nonce, cipher_text, add)
