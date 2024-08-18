@@ -45,7 +45,9 @@ def pre_key_bundle_generation(id, sign_key, sign_key_pub, opk_num=20):
 # Use prekey bundle to build channel by X3DH
 def two_party_channel_init_key_generate(state, id_b, enc_mode, sign_mode):
     if state.ik_pub is None: return
-    ik_pub_b, spk_pub_b, sign_key_pub, perkey_signature, opk_pub_b, opk_index = get_prekey_data(id_b)
+    # ik_pub_b, spk_pub_b, sign_key_pub, perkey_signature, opk_pub_b, opk_index = get_prekey_data(id_b)
+    ik_pub_b, spk_pub_b, sign_key_pub, perkey_signature = get_prekey_data(id_b)
+
     if not verify_signature(sign_key_pub, encode_bytes_pub(ik_pub_b) + encode_bytes_pub(spk_pub_b),
                             perkey_signature, sign_mode): raise Exception('Signature Verification Failure')
     ek, ek_pub = generate_key_pair()
@@ -53,13 +55,14 @@ def two_party_channel_init_key_generate(state, id_b, enc_mode, sign_mode):
     dh2 = dh(ek, ik_pub_b)
     dh3 = dh(ek, spk_pub_b)
     # dh4 = dh(ek, opk_pub_b)
+
     info = (
             encode_bytes_pub(state.ik_pub) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(ik_pub_b) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(ek_pub) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(spk_pub_b)
     )
     hkdf = HKDF(
@@ -80,8 +83,9 @@ def two_party_channel_init_key_generate(state, id_b, enc_mode, sign_mode):
     cipher_text = AEAD_encrypt(state.nonce, state.cks, info, sk, enc_mode)
     state.sk[id_b] = sk
     ad = info
-    initial_message = (cipher_text, ad, state.nonce, opk_index, state.spk_sign)
+    # initial_message = (cipher_text, ad, state.nonce, opk_index, state.spk_sign)
 
+    initial_message = (cipher_text, ad, state.nonce, 0, state.spk_sign)
     return state, initial_message
 
 
@@ -94,7 +98,7 @@ def handle_initial_message(id_a, state, initial_message, enc_mode, sign_mode):
     sign_pub = initial_message[4]
     state.sign_key[id_a] = sign_pub
     # Extract the individual keys from the combined bytes ad
-    components = ad.split(b" | ")
+    components = ad.split(b"~|~")
 
     # Assign the split components to the respective variables
     ik_pub_bytes_a = components[0]
@@ -113,11 +117,11 @@ def handle_initial_message(id_a, state, initial_message, enc_mode, sign_mode):
     # dh4 = dh(opk, ek_pub_a)
     info = (
             encode_bytes_pub(ik_pub_a) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(state.ik_pub) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(ek_pub_a) +
-            b" | " +
+            b"~|~" +
             encode_bytes_pub(state.spk_pub)
     )
     hkdf = HKDF(

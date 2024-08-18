@@ -2,7 +2,6 @@
 import random
 import string
 import timeit
-
 import cryptographic_material
 from group_message import *
 
@@ -78,9 +77,11 @@ def group_creation_test(group_size, enc_mode, sign_mode):
 
 
 test_cases = [
+    {'enc_mode': 'AES-GCM', 'sign_mode': 'ed25519', 'group_size': 10, 'label': 'AES-GCM with ed25519'},
     # {'enc_mode': 'AES-GCM', 'sign_mode': 'ed25519', 'group_size': 300, 'label': 'AES-GCM with ed25519'},
-    {'enc_mode': 'AES-GCM-SIV', 'sign_mode': 'ed25519', 'group_size': 10, 'label': 'AES-GCM-SIV with ed25519'},
-    # {'enc_mode': 'AES-CCM', 'sign_mode': 'ed25519', 'group_size': 100, 'label': 'AES-CCM with ed25519'},
+
+    # {'enc_mode': 'AES-GCM-SIV', 'sign_mode': 'ed25519', 'group_size': 300, 'label': 'AES-GCM-SIV with ed25519'},
+    # {'enc_mode': 'AES-CCM', 'sign_mode': 'ed25519', 'group_size': 300, 'label': 'AES-CCM with ed25519'},
     # {'enc_mode': 'AES-GCM', 'sign_mode': 'sphincs', 'group_size': 10, 'label': 'AES-GCM with sphincs'},
 ]
 
@@ -103,7 +104,7 @@ for case in test_cases:
 #     test_group.message_send(sender_id, random_string, enc_mode, sign_mode)
 #
 #
-# group_size = 10
+# group_size = 300
 # group_id = [str(i) for i in range(group_size)]
 # test_group = Group(group_id)
 # test_group.group_creation('AES-GCM', 'ed25519')
@@ -119,6 +120,3 @@ for case in test_cases:
 #                                             number=200)
 #     print(f"10-people group creation time {label}: {message_sending_10_time} seconds")
 
-#
-# message_sending_10_time = timeit.timeit(lambda: group_message_test(test_group, group_size, enc_mode, sign_mode), number=200)
-# print(f"10-people group creation time aes-gcm: {message_sending_10_time} seconds")

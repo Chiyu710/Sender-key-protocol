@@ -1,4 +1,8 @@
+from sqlalchemy import create_engine, text  # Ensure 'text' is imported
+from sqlalchemy.pool import QueuePool
+from sqlalchemy.exc import SQLAlchemyError
 import pymysql
+
 from cryptography.hazmat.primitives.asymmetric import x25519, ed25519
 
 from cryptographic_material import encode_bytes_pub, encode_bytes_priv
@@ -32,45 +36,88 @@ def pre_key_store(id, ik_pub, spk_pub, spk_sign, signature, opks):
         print(f"An error occurred: {e}")
 
 
+engine = create_engine(
+    "mysql+pymysql://root:root@localhost:3307/sender_key",
+    poolclass=QueuePool,
+    pool_size=10,
+    max_overflow=20,
+)
+
+# def get_prekey_data(id):
+#     connection = pymysql.connect(host='localhost',
+#                                  user='root',
+#                                  port=3307,
+#                                  password='root',
+#                                  db='sender_key'
+#                                  )
+#     try:
+#         with connection.cursor() as cursor:
+#             # Retrieve data from prekey table
+#             sql_prekey = "SELECT ik, spk, spk_sign, signature FROM prekey WHERE id = %s"
+#             cursor.execute(sql_prekey, id)
+#             prekey_data = cursor.fetchone()
+#             if not prekey_data:
+#                 return None
+#             ik_pub, spk_pub, spk_sign, signature = prekey_data
+#
+#             # Retrieve associated opk data
+#             # sql_opks = "SELECT opk, opk_index FROM opks WHERE user_id = %s LIMIT 1"
+#             # cursor.execute(sql_opks, id)
+#             # opk_data = cursor.fetchone()
+#             # if not opk_data:
+#             #     return None
+#             # opk, opk_index = opk_data
+#             opk, opk_index = None, 1
+#             # there should be a delete code
+#             # print(opk)
+#             # Convert keys from byte type to key type
+#             ik_pub = x25519.X25519PublicKey.from_public_bytes(ik_pub)
+#             spk_pub = x25519.X25519PublicKey.from_public_bytes(spk_pub)
+#             # opk = x25519.X25519PublicKey.from_public_bytes(opk)
+#             spk_sign = ed25519.Ed25519PublicKey.from_public_bytes(spk_sign)
+#             return ik_pub, spk_pub, spk_sign, signature, opk, opk_index
+#
+#
+#     except Exception as e:
+#         print(f"An error occurred: {e}")
+#         return None
+
 def get_prekey_data(id):
-    connection = pymysql.connect(host='localhost',
-                                 user='root',
-                                 port=3307,
-                                 password='root',
-                                 db='sender_key'
-                                 )
+    connection = engine.connect()  # Get a connection from the SQLAlchemy engine
     try:
-        with connection.cursor() as cursor:
-            # Retrieve data from prekey table
-            sql_prekey = "SELECT ik, spk, spk_sign, signature FROM prekey WHERE id = %s"
-            cursor.execute(sql_prekey, id)
-            prekey_data = cursor.fetchone()
-            if not prekey_data:
+        with connection.begin():  # Automatically handle transactions
+            # Define the SQL query
+            sql = text("""
+                SELECT 
+                    prekey.ik, prekey.spk, prekey.spk_sign, prekey.signature
+                FROM 
+                    prekey 
+                WHERE 
+                    prekey.id = :id 
+                LIMIT 1
+                """)
+            result = connection.execute(sql, {'id': id})
+            data = result.fetchone()
+            if not data:
                 return None
-            ik_pub, spk_pub, spk_sign, signature = prekey_data
+            ik_pub, spk_pub, spk_sign, signature = data
 
-            # Retrieve associated opk data
-            sql_opks = "SELECT opk, opk_index FROM opks WHERE user_id = %s LIMIT 1"
-            cursor.execute(sql_opks, id)
-            opk_data = cursor.fetchone()
-            if not opk_data:
-                return None
-            opk, opk_index = opk_data
+            # Check lengths before conversion
+            if len(ik_pub) != 32 or len(spk_pub) != 32 or len(spk_sign) != 32:
+                raise ValueError("One of the keys is not 32 bytes long")
 
-            # there should be a delete code
-            # print(opk)
             # Convert keys from byte type to key type
             ik_pub = x25519.X25519PublicKey.from_public_bytes(ik_pub)
             spk_pub = x25519.X25519PublicKey.from_public_bytes(spk_pub)
-            opk = x25519.X25519PublicKey.from_public_bytes(opk)
             spk_sign = ed25519.Ed25519PublicKey.from_public_bytes(spk_sign)
-            return ik_pub, spk_pub, spk_sign, signature, opk, opk_index
 
+            return ik_pub, spk_pub, spk_sign, signature
 
-    except Exception as e:
+    except SQLAlchemyError as e:
         print(f"An error occurred: {e}")
         return None
-
+    finally:
+        connection.close()  # Ensure the connection is released back to the pool
 
 def store_state(state):
     connection = pymysql.connect(host='localhost',
